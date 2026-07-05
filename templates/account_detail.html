@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <title>銀行付款模擬頁</title>
+
+    <style>
+        body{
+            font-family: Arial, sans-serif;
+            margin:40px;
+        }
+
+        .container{
+            max-width:800px;
+            margin:auto;
+        }
+
+        .info-box{
+            border:1px solid #ccc;
+            padding:20px;
+            border-radius:10px;
+            background:#f8f8f8;
+        }
+
+        .important{
+            color:red;
+            font-weight:bold;
+        }
+
+        table{
+            width:100%;
+            border-collapse: collapse;
+        }
+
+        td{
+            padding:10px;
+            border:1px solid #ddd;
+        }
+
+        .btn{
+            margin-top:20px;
+            padding:10px 20px;
+            cursor:pointer;
+        }
+
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>銀行付款模擬頁</h2>
+    
+    <hr>
+    <div class="info-box">
+        <table>
+            <!-- <tr>
+                <td>test</td>
+                <td>{{ account }}</td>
+            </tr> -->
+            <tr>
+                <td>訂單編號</td>
+                <td>{{ account.merchant_trade_no }}</td>
+            </tr>
+
+
+            <tr>
+                <td>付款金額</td>
+                <td>{{ account.trade_amt }} 元</td>
+            </tr>
+
+            <tr>
+                <td>銀行代碼</td>
+                <td>{{ account.bank_code }}</td>
+            </tr>
+
+            <tr>
+                <td>虛擬帳號</td>
+                <td class="important">
+                    {{ account.v_account }}
+                </td>
+            </tr>
+
+            <tr>
+                <td>狀態</td>
+                <td>
+                    {{ account.status }}
+                </td>
+            </tr>
+
+        </table>
+        
+    </div>
+
+
+    <form method="post" action="{% url 'simulate_paid' account.merchant_trade_no %}">
+
+        {% csrf_token %}
+
+        <button type="submit">
+
+            模擬收到款項
+
+        </button>
+
+    </form>
+
+    <form method="post" action="{% url 'simulate_failed' account.merchant_trade_no %}">
+
+        {% csrf_token %}
+
+        <button type="submit">
+
+            模擬未收到款項
+
+        </button>
+
+    </form>
