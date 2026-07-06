@@ -5,6 +5,7 @@ from notify.views import (
     account_detail,
     simulate_paid,
     simulate_failed,
+    db_query_tool,
 #     ecpay_notify,
 )
 
