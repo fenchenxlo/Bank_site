@@ -24,4 +24,5 @@ urlpatterns = [
 #     path('', home, name='home'),
     path('admin/', admin.site.urls),
     path("notify/", include("notify.urls")),  # 把 notify app 的 urls 串進來
+    path("", lambda request: HttpResponse("Bank site Server OK")),
 ]
