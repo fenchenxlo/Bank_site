@@ -7,10 +7,60 @@ from .models import VirtualAccount          # 匯入 Order model，用來更新�
 from django.views.decorators.http import require_POST
 import httpx ,json ,datetime 
 from django.utils import timezone
+from django.contrib.auth.decorators import user_passes_test
+from django.shortcuts import render
+from django.db import connection
 
 # Create your views here.
 def home(request):   
     return render(request, 'home.html')
+
+def is_admin(user):
+    return user.is_authenticated and user.is_superuser
+
+@user_passes_test(is_admin, login_url='/admin/login/')
+def db_query_tool(request):
+    tables = []
+    columns = []
+    rows = []
+    error = None
+    table_choice = request.GET.get('table', '')
+    column_choice = request.GET.get('column', '')
+    value_input = request.GET.get('value', '')
+
+    with connection.cursor() as cursor:
+        # 1. 取得所有 table
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'django_%' AND name NOT LIKE 'auth_%';"
+        )
+        tables = [r[0] for r in cursor.fetchall()]
+
+        # 2. 若有選 table，取得欄位
+        if table_choice and table_choice in tables:
+            cursor.execute(f"PRAGMA table_info({table_choice});")
+            columns = [r[1] for r in cursor.fetchall()]
+
+        # 3. 若有輸入查詢條件，執行查詢
+        if table_choice and column_choice and value_input and table_choice in tables and column_choice in columns:
+            try:
+                query = f"SELECT * FROM {table_choice} WHERE {column_choice} = %s"
+                cursor.execute(query, [value_input])
+                col_names = [desc[0] for desc in cursor.description]
+                rows = [dict(zip(col_names, r)) for r in cursor.fetchall()]
+            except Exception as e:
+                error = str(e)
+
+    context = {
+        'tables': tables,
+        'columns': columns,
+        'rows': rows,
+        'error': error,
+        'table_choice': table_choice,
+        'column_choice': column_choice,
+        'value_input': value_input,
+    }
+    return render(request, 'admin_tools/db_query.html', context)
+
 
 # 銀行接收 Callback ,create_account
 @csrf_exempt

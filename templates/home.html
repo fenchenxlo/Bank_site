@@ -1,8 +1,8 @@
 <html>
   <body>
-    <h1>Fake 綠界 ATM 付款頁</h1>
-    <p>您的訂單編號：123</p>
-    <p>付款金額：1000 元</p>
+	{% if user.is_authenticated and user.is_superuser %}
+		<p><a href="{% url 'db_query_tool' %}">🔍 資料庫查詢工具</a></p>
+	{% endif %}
 
     
   </body>

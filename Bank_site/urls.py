@@ -17,12 +17,12 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from django.http import HttpResponse
-# from notify.views import (
-#     home,
-# )
+ from notify.views import (
+     home,
+ )
 
 urlpatterns = [
-#     path('', home, name='home'),
+     path('', home, name='home'),
     path('admin/', admin.site.urls),
     path("notify/", include("notify.urls")),  # 把 notify app 的 urls 串進來
     path("", lambda request: HttpResponse("Bank site Server OK")),
