@@ -121,7 +121,8 @@ def simulate_paid(request, merchant_trade_no):
     try:        
         response = httpx.post(
 
-            "http://127.0.0.1:8001/gateway/payment_notify/",
+#            "http://127.0.0.1:8001/gateway/payment_notify/",
+            f"{settings.HF_SPACE_ECPAY_MOCK_URL}/gateway/payment_notify/",
 
             json=payload,
 
@@ -189,8 +190,8 @@ def simulate_failed(request, merchant_trade_no):
     try:        
         response = httpx.post(
 
-            "http://127.0.0.1:8001/gateway/payment_notify/",
-
+#            "http://127.0.0.1:8001/gateway/payment_notify/",
+            f"{settings.HF_SPACE_ECPAY_MOCK_URL}/gateway/payment_notify/",
             json=payload,
 
             timeout=10
