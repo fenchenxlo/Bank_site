@@ -70,6 +70,9 @@ INSTALLED_APPS = [
     'corsheaders',      # 新增 CORS 支援
 ]
 
+LOGIN_REDIRECT_URL = '/'
+LOGOUT_REDIRECT_URL = '/'
+
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',  # 放在最前面
 #    'django.middleware.security.SecurityMiddleware',
