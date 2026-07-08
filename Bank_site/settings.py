@@ -52,7 +52,7 @@ ALLOWED_HOSTS = [
 ]
 
 # 關鍵: 允許Hugging Face 的Iframe 嵌入你的網站,否則畫面會空白
-X_FRAME_OPTIONS = "ALLOW"
+#X_FRAME_OPTIONS = "ALLOW"
 
 # 加上這行：允許 Django 讀取 X-Forwarded-Host 標頭
 USE_X_FORWARDED_HOST = True
@@ -69,6 +69,9 @@ INSTALLED_APPS = [
     'notify',           # Bank_site的app
     'corsheaders',      # 新增 CORS 支援
 ]
+
+LOGIN_REDIRECT_URL = '/'
+LOGOUT_REDIRECT_URL = '/'
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',  # 放在最前面
