@@ -71,5 +71,6 @@ CMD ["sh", "-c", "\
         echo '/data 已有資料庫,沿用現有資料'; \
     fi && \
     python manage.py migrate && \
+    python manage.py create_superuser_auto && \
     python -m gunicorn --bind 0.0.0.0:${PORT} --workers 1 --timeout 120 --access-logfile - Bank_site.wsgi:application \
 "]
