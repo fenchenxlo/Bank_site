@@ -71,5 +71,14 @@ CMD ["sh", "-c", "\
         echo '/data 已有資料庫,沿用現有資料'; \
     fi && \
     python manage.py migrate && \
+    python manage.py shell -c \"\
+import os; \
+from django.contrib.auth import get_user_model; \
+User = get_user_model(); \
+username = os.environ.get('DJANGO_SUPERUSER_USERNAME'); \
+email = os.environ.get('DJANGO_SUPERUSER_EMAIL'); \
+password = os.environ.get('DJANGO_SUPERUSER_PASSWORD'); \
+User.objects.filter(username=username).exists() or (username and password and User.objects.create_superuser(username=username, email=email, password=password) and print('Superuser created')) \
+\" && \
     python -m gunicorn --bind 0.0.0.0:${PORT} --workers 1 --timeout 120 --access-logfile - Bank_site.wsgi:application \
 "]
