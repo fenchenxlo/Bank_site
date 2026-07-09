@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <title>資料庫查詢 + 模擬付款工具</title>
+    <style>
+        body { font-family: sans-serif; margin: 40px; }
+        table { border-collapse: collapse; margin-top: 15px; }
+        th, td { border: 1px solid #ccc; padding: 6px 12px; }
+        .error { color: red; }
+        select, input, button { padding: 6px; margin: 5px 0; }
+
+        /* 頁首:標題 + 登出連結,固定顯示,不受查詢狀態影響 */
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        /* 左右兩欄排版 */
+        .layout {
+            display: flex;
+            gap: 40px;
+            align-items: flex-start;
+        }
+        .left-panel {
+            flex: 2;
+        }
+        .right-panel {
+            flex: 1;
+            border: 1px solid #ccc;
+            border-radius: 10px;
+            padding: 20px;
+            background: #f8f8f8;
+        }
+        .btn-group form {
+            display: inline-block;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+
+<!-- ==================== 頁首:標題 + 登出連結 ====================
+     這裡直接把登出連結寫死在頁面最上方,不管查詢狀態如何、
+     有沒有選 table/欄位,登出連結都會一直顯示,不會消失。 -->
+<div class="page-header">
+    <h1>資料庫查詢 + 模擬付款工具（管理員限定）</h1>
+    <p>
+        歡迎，{{ user.username }}｜
+        <a href="{% url 'admin:logout' %}">登出</a>
+    </p>
+</div>
+
+<div class="layout">
+
+    <!-- ==================== 左側:SQL 查詢工具 ==================== -->
+    <div class="left-panel">
+        <h2>資料庫查詢</h2>
+
+        <form method="get">
+            <label>選擇 Table：</label>
+            <select name="table" onchange="this.form.submit()">
+                <option value="">-- 請選擇 --</option>
+                {% for t in tables %}
+                    <option value="{{ t }}" {% if t == table_choice %}selected{% endif %}>{{ t }}</option>
+                {% endfor %}
+            </select>
+
+            {% if columns %}
+                <br>
+                <label>選擇欄位：</label>
+                <select name="column" onchange="this.form.submit()">
+                    <option value="">-- 請選擇 --</option>
+                    {% for c in columns %}
+                        <option value="{{ c }}" {% if c == column_choice %}selected{% endif %}>{{ c }}</option>
+                    {% endfor %}
+                </select>
+            {% endif %}
+        </form>
+
+        {% if error %}
+            <p class="error">查詢錯誤：{{ error }}</p>
+        {% endif %}
+
+        {% if rows %}
+            <p>查詢到 {{ rows|length }} 筆結果</p>
+            <table>
+                <tr>
+                    {% for key in rows.0.keys %}
+                        <th>{{ key }}</th>
+                    {% endfor %}
+                </tr>
+                {% for row in rows %}
+                    <tr>
+                        {% for value in row.values %}
+                            <td>{{ value }}</td>
+                        {% endfor %}
+                    </tr>
+                {% endfor %}
+            </table>
+        {% elif table_choice and column_choice %}
+            <p>沒有符合的資料（該欄位可能全部為空值）</p>
+        {% endif %}
+    </div>
+
+    <!-- ==================== 右側:模擬銀行付款工具 ==================== -->
+    <div class="right-panel">
+        <h2>模擬銀行付款</h2>
+        <p>輸入綠界交易編號（merchant_trade_no）後，選擇要模擬的結果：</p>
+
+        <label>綠界交易編號：</label><br>
+        <input type="text" id="merchant_trade_no_input" placeholder="請輸入交易編號">
+
+        <div class="btn-group">
+            <!--
+                action 先留空,實際網址由 JavaScript 在送出當下動態組成,
+                因為交易編號是使用者輸入的,渲染模板時還不知道值。
+            -->
+            <form id="form-paid" method="post" action="">
+                {% csrf_token %}
+                <button type="button" onclick="submitForm('paid')">模擬收到款項</button>
+            </form>
+
+            <form id="form-failed" method="post" action="">
+                {% csrf_token %}
+                <button type="button" onclick="submitForm('failed')">模擬未收到款項</button>
+            </form>
+        </div>
+    </div>
+
+</div>
+
+<script>
+// 讀取輸入框的交易編號,動態組出網址後手動送出對應的表單
+function submitForm(type) {
+    const input = document.getElementById('merchant_trade_no_input');
+    const merchantTradeNo = input.value.trim();
+
+    if (!merchantTradeNo) {
+        alert('請先輸入綠界交易編號');
+        return;
+    }
+
+    // 避免交易編號中若有特殊字元(如 / ? 空白),破壞網址結構
+    const encodedNo = encodeURIComponent(merchantTradeNo);
+
+    if (type === 'paid') {
+        const form = document.getElementById('form-paid');
+        form.action = `/simulate_paid/${encodedNo}/`;
+        form.submit();
+    } else if (type === 'failed') {
+        const form = document.getElementById('form-failed');
+        form.action = `/simulate_failed/${encodedNo}/`;
+        form.submit();
+    }
+}
+</script>
+
+</body>
+</html>

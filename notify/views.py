@@ -21,23 +21,23 @@ def is_admin(user):
 
 
 @user_passes_test(is_admin, login_url='/admin/login/')
-def db_query_tool(request):
+def query_and_simulate(request):
     """
-    資料庫查詢工具:
-    流程 —— 使用者先選擇 table,選定後列出該 table 所有欄位,
-    再選擇欄位,選定後查詢「該欄位不為空(IS NOT NULL)」的所有值,
-    只顯示這一個欄位的資料清單(不顯示整列其他欄位)。
+    合併頁面:左側是 SQL 查詢工具(選 table -> 選欄位 -> 顯示該欄位所有非空值),
+    右側是模擬銀行付款工具(手動輸入綠界交易編號,模擬「已收款」或「未收款」)。
+
+    這是獨立的新頁面,跟原本的 db_query_tool 互不影響、互不共用邏輯,
+    方便未來要單獨修改其中一個功能時,不會動到另一個。
     """
-    tables = []       # 所有可查詢的 table 名稱
-    columns = []       # 目前選定 table 的欄位名稱清單
-    rows = []          # 查詢結果(每筆為一個 dict,只含選定欄位)
-    error = None       # 查詢過程中若有錯誤,存放錯誤訊息
-    table_choice = request.GET.get('table', '')    # 使用者選擇的 table 名稱
-    column_choice = request.GET.get('column', '')  # 使用者選擇的欄位名稱
+    tables = []
+    columns = []
+    rows = []
+    error = None
+    table_choice = request.GET.get('table', '')
+    column_choice = request.GET.get('column', '')
 
     with connection.cursor() as cursor:
-        # 1. 取得資料庫中所有「業務用」table
-        #    排除 sqlite 系統表、django 內建表、auth 相關表,避免使用者誤查系統資料
+        # 1. 取得所有「業務用」table(排除系統表、django 內建表、auth 相關表)
         cursor.execute(
             "SELECT name FROM sqlite_master WHERE type='table' "
             "AND name NOT LIKE 'sqlite_%' "
@@ -46,20 +46,14 @@ def db_query_tool(request):
         )
         tables = [r[0] for r in cursor.fetchall()]
 
-        # 2. 若使用者有選擇 table,且該 table 確實存在於允許清單中
-        #    (防止使用者從網址列竄改 table 參數,查詢到不該看的系統表)
+        # 2. 選了 table 且通過白名單檢查後,取得該 table 的所有欄位
         if table_choice and table_choice in tables:
-            # 2-1. 取得該 table 的所有欄位名稱(給使用者選擇用)
             cursor.execute(f"PRAGMA table_info({table_choice});")
             columns = [r[1] for r in cursor.fetchall()]
 
-            # 3. 若使用者有進一步選擇欄位,且該欄位確實存在於這個 table 中
-            #    (同樣做白名單檢查,防止竄改 column 參數)
+            # 3. 選了欄位且通過白名單檢查後,查詢該欄位不為空的所有值
             if column_choice and column_choice in columns:
                 try:
-                    # 3-1. 查詢「該欄位不為空」的所有值
-                    #      table_choice、column_choice 都已通過白名單檢查,
-                    #      用 f-string 組 SQL 是安全的,不會有注入風險
                     query = (
                         f"SELECT {column_choice} FROM {table_choice} "
                         f"WHERE {column_choice} IS NOT NULL;"
@@ -67,7 +61,6 @@ def db_query_tool(request):
                     cursor.execute(query)
                     rows = [{column_choice: r[0]} for r in cursor.fetchall()]
                 except Exception as e:
-                    # 查詢過程中若發生錯誤,記錄錯誤訊息
                     error = str(e)
 
     context = {
@@ -78,7 +71,7 @@ def db_query_tool(request):
         'table_choice': table_choice,
         'column_choice': column_choice,
     }
-    return render(request, 'admin_tools/db_query.html', context)
+    return render(request, 'admin_tools/query_simulate.html', context)
 
 
 # 銀行接收 Callback ,create_account

@@ -6,6 +6,7 @@ from notify.views import (
     simulate_paid,
     simulate_failed,
     db_query_tool,
+    query_and_simulate,   # 新增:import 新的 view
 #     ecpay_notify,
 )
 
@@ -16,5 +17,6 @@ urlpatterns = [
     path("simulate_paid/<str:merchant_trade_no>/",simulate_paid,name="simulate_paid"),
     path("simulate_failed/<str:merchant_trade_no>/",simulate_failed,name="simulate_failed"),
     path("admin-tools/query/", db_query_tool, name="db_query_tool"),  # 新增
+    path("admin-tools/query-simulate/", query_and_simulate, name="query_and_simulate"),  # 新增:查詢+模擬付款合併頁
 #     path("notify/", ecpay_notify, name="ecpay_notify"),        # 綠界 server-to-server 回傳
 ]
