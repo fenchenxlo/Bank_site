@@ -24,19 +24,25 @@ def db_query_tool(request):
     """
     資料庫查詢工具:
     流程 —— 使用者先選擇 table,選定後列出該 table 所有欄位,
-    再選擇欄位,選定後查詢「該欄位不為空(IS NOT NULL)」的所有值,
-    只顯示這一個欄位的資料清單(不顯示整列其他欄位)。
+    再選擇「兩個」欄位(column1、column2),查詢這兩個欄位
+    「同一列(同一筆資料)」對應的值,例如 order_number 對應 status。
+
+    重點:兩個欄位必須放在同一個 SELECT 裡一起查,才能保證
+    回傳的每一筆 (col1值, col2值) 確實來自同一列資料,
+    而不是像分開查兩次那樣,兩份清單各自篩選、順序對不上。
     """
-    tables = []       # 所有可查詢的 table 名稱
-    columns = []       # 目前選定 table 的欄位名稱清單
-    rows = []          # 查詢結果(每筆為一個 dict,只含選定欄位)
-    error = None       # 查詢過程中若有錯誤,存放錯誤訊息
-    table_choice = request.GET.get('table', '')    # 使用者選擇的 table 名稱
-    column_choice = request.GET.get('column', '')  # 使用者選擇的欄位名稱
+    tables = []          # 所有可查詢的 table 名稱
+    columns = []          # 目前選定 table 的欄位名稱清單
+    rows = []              # 查詢結果,每筆是 (col1值, col2值) 的 tuple
+    error = None           # 查詢過程中若有錯誤,存放錯誤訊息
+
+    table_choice = request.GET.get('table', '')      # 使用者選擇的 table 名稱
+    column1_choice = request.GET.get('column1', '')  # 使用者選擇的第一個欄位
+    column2_choice = request.GET.get('column2', '')  # 使用者選擇的第二個欄位
 
     with connection.cursor() as cursor:
         # 1. 取得資料庫中所有「業務用」table
-        #    排除 sqlite 系統表、django 內建表、auth 相關表,避免使用者誤查系統資料
+        #    排除 sqlite 系統表、django 內建表、auth 相關表,避免查到不該看的系統資料
         cursor.execute(
             "SELECT name FROM sqlite_master WHERE type='table' "
             "AND name NOT LIKE 'sqlite_%' "
@@ -46,27 +52,36 @@ def db_query_tool(request):
         tables = [r[0] for r in cursor.fetchall()]
 
         # 2. 若使用者有選擇 table,且該 table 確實存在於允許清單中
-        #    (防止使用者從網址列竄改 table 參數,查詢到不該看的系統表)
+        #    (白名單檢查,防止使用者從網址列竄改 table 參數)
         if table_choice and table_choice in tables:
             # 2-1. 取得該 table 的所有欄位名稱(給使用者選擇用)
             cursor.execute(f"PRAGMA table_info({table_choice});")
             columns = [r[1] for r in cursor.fetchall()]
 
-            # 3. 若使用者有進一步選擇欄位,且該欄位確實存在於這個 table 中
-            #    (同樣做白名單檢查,防止竄改 column 參數)
-            if column_choice and column_choice in columns:
+            # 3. 兩個欄位都要有選,且都存在於這個 table 的欄位清單中(白名單檢查),
+            #    且不能選成同一個欄位(對應兩個一樣的東西沒有意義)
+            if (column1_choice and column2_choice
+                    and column1_choice in columns
+                    and column2_choice in columns
+                    and column1_choice != column2_choice):
                 try:
-                    # 3-1. 查詢「該欄位不為空」的所有值
-                    #      table_choice、column_choice 都已通過白名單檢查,
-                    #      用 f-string 組 SQL 是安全的,不會有注入風險
+                    # 3-1. 關鍵修改:col1、col2 放在同一個 SELECT 裡一起撈,
+                    #      確保同一列回傳的兩個值是「同一筆資料」的對應值。
+                    #      table_choice / column1_choice / column2_choice
+                    #      都已經過白名單檢查,用 f-string 組 SQL 是安全的。
+                    #      加上 ORDER BY rowid,確保每次查詢順序固定一致。
                     query = (
-                        f"SELECT {column_choice} FROM {table_choice} "
-                        f"WHERE {column_choice} IS NOT NULL;"
+                        f"SELECT {column1_choice}, {column2_choice} "
+                        f"FROM {table_choice} "
+                        f"WHERE {column1_choice} IS NOT NULL "
+                        f"AND {column2_choice} IS NOT NULL "
+                        f"ORDER BY rowid;"
                     )
                     cursor.execute(query)
-                    rows = [{column_choice: r[0]} for r in cursor.fetchall()]
+                    # 直接存成 tuple list:[(col1值, col2值), (col1值, col2值), ...]
+                    rows = [(r[0], r[1]) for r in cursor.fetchall()]
                 except Exception as e:
-                    # 查詢過程中若發生錯誤,記錄錯誤訊息
+                    # 查詢過程中若發生錯誤(例如欄位型別問題),記錄錯誤訊息
                     error = str(e)
 
     context = {
@@ -75,7 +90,8 @@ def db_query_tool(request):
         'rows': rows,
         'error': error,
         'table_choice': table_choice,
-        'column_choice': column_choice,
+        'column1_choice': column1_choice,
+        'column2_choice': column2_choice,
     }
     return render(request, 'admin_tools/db_query.html', context)
 
