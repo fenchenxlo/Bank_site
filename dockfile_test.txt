@@ -1,0 +1,54 @@
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+RUN useradd -m -u 1000 user
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gosu && \
+    rm -rf /var/lib/apt/lists/*
+
+ENV HOME=/home/user
+ENV PATH="/home/user/.local/bin:${PATH}"
+
+USER user
+
+WORKDIR $HOME/app
+
+COPY --chown=user requirements.txt .
+
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+COPY --chown=user . .
+
+RUN python manage.py collectstatic --noinput
+
+
+ENV PORT=7860
+
+EXPOSE ${PORT}
+
+
+CMD ["sh", "-c", "\
+    echo '=== Container Starting ===' && \
+    mkdir -p /data && \
+    if [ ! -f /data/db.sqlite3 ]; then \
+        echo '首次啟動,複製初始資料庫到 /data...' && \
+        cp $HOME/app/db.sqlite3 /data/db.sqlite3; \
+    else \
+        echo '/data 已有資料庫,沿用現有資料'; \
+    fi && \
+    echo '=== Running migrations ===' && \
+    python manage.py migrate && \
+    echo '=== Starting Gunicorn ===' && \
+    exec python -m gunicorn \
+        --bind 0.0.0.0:${PORT} \
+        --workers 1 \
+        --timeout 120 \
+        --log-level info \
+        --access-logfile - \
+        --error-logfile - \
+        Bank_site.wsgi:application \
+"]
