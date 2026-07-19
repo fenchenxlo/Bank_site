@@ -285,7 +285,8 @@ def simulate_paid(request, merchant_trade_no):
                 "gateway_response": response.json()
             })
         else:
-            return render(request, "account_detail.html", {'account':payload})
+            return render(request, "admin_tools/db_query.html", {'account':payload})
+#            return render(request, "account_detail.html", {'account':payload})
 #             return redirect(
 #                 f"notify/account_detail/{account}/"
 #             )
@@ -353,7 +354,8 @@ def simulate_failed(request, merchant_trade_no):
                 "gateway_response": response.json()
             })
         else:
-            return render(request, "account_detail.html", {'account':payload})
+            return render(request, "admin_tools/db_query.html", {'account':payload})
+#            return render(request, "account_detail.html", {'account':payload})
 #             return redirect(
 #                 f"notify/account_detail/{account}/"
 #             )
