@@ -18,6 +18,7 @@ def home(request):
 def is_admin(user):
     """判斷是否為已登入的管理員(superuser)"""
     return user.is_authenticated and user.is_superuser
+    
 
 @user_passes_test(is_admin, login_url='/admin/login/')
 def db_query_tool(request):
@@ -95,7 +96,7 @@ def db_query_tool(request):
     }
     return render(request, 'admin_tools/db_query.html', context)
 
-
+@csrf_exempt
 @user_passes_test(is_admin, login_url='/admin/login/')
 def query_and_simulate(request):
     """
