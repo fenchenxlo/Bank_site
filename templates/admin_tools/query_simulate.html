@@ -148,11 +148,11 @@ function submitForm(type) {
 
     if (type === 'paid') {
         const form = document.getElementById('form-paid');
-        form.action = `/simulate_paid/${encodedNo}/`;
+        form.action = `/notify/simulate_paid/${encodedNo}/`;
         form.submit();
     } else if (type === 'failed') {
         const form = document.getElementById('form-failed');
-        form.action = `/simulate_failed/${encodedNo}/`;
+        form.action = `/notify/simulate_failed/${encodedNo}/`;
         form.submit();
     }
 }
