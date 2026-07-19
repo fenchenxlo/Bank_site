@@ -83,7 +83,7 @@ MIDDLEWARE = [
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
-#    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
 # CSP 設定（包含允許 HuggingFace iframe）
@@ -92,7 +92,7 @@ SECURE_CSP = {
     "style-src": [CSP.SELF, CSP.UNSAFE_INLINE],   # 允許 inline style   
     "script-src": [CSP.SELF, CSP.UNSAFE_INLINE],  # 允許 inline script
     "img-src": [CSP.SELF, "https:"],
-    "frame-ancestors": [CSP.SELF,"https://huggingface.co"],  # 允許 HF 嵌入
+    "frame-ancestors": ["https://huggingface.co"],  # 允許 HF 嵌入
 }
 
 ROOT_URLCONF = 'Bank_site.urls'
