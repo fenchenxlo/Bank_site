@@ -167,6 +167,7 @@ def create_account(request):
         if isinstance(data, (bytes, bytearray)):
             data = json.loads(data.decode("utf-8"))
             print("1")
+            logger.info("1")
 #            payment_data  = json.loads(request.body.decode("utf-8"))
     except json.JSONDecodeError:
         return HttpResponseBadRequest("JSON 格式錯誤")
@@ -197,6 +198,7 @@ def create_account(request):
 #     expire_date = datetime.strptime(data["expire_date"], "%Y-%m-%d %H:%M:%S")
 #     expire_date = timezone.make_aware(expire_date)
     print("2")
+    logger.info("2")
     
     try:
         # 嘗試取得VirtualAccount，如果沒有就建立
@@ -213,12 +215,20 @@ def create_account(request):
     except Exception as ex:
 
         print("銀行通知失敗: 虛擬帳號 取得或建立失敗")
-
+        logger.info("銀行通知失敗: 虛擬帳號 取得或建立失敗")
         print(ex)
-        
-        return ({"status":False })
+        logger.info("Exception as ex: {ex}")
+        return ({"status":False, "message": "虛擬帳號建立失敗" }, status=500)
+    logger.info("3")
     print("3")
-    return JsonResponse({ "status":True})
+    return JsonResponse({ "status":True,
+        "merchant_trade_no": virtual_account.merchant_trade_no,
+        "bank_code": virtual_account.bank_code,
+        "v_account": virtual_account.v_account,
+        "expire_date": virtual_account.expire_date.strftime("%Y-%m-%d %H:%M:%S"),
+        "trade_amt": str(virtual_account.trade_amt),
+        "payment_status": virtual_account.status
+    })
 
 @csrf_exempt
 def account_detail(request, merchant_trade_no):
