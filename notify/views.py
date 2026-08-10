@@ -220,7 +220,7 @@ def create_account(request):
         print("銀行通知失敗: 虛擬帳號 取得或建立失敗")
         logger.info("銀行通知失敗: 虛擬帳號 取得或建立失敗")
         print(ex)
-        logger.info("Exception as ex: {ex}")
+        logger.info(f"Exception as ex: {ex}")
         return JsonResponse({"status":False, "message": "虛擬帳號建立失敗" }, status=500)
     logger.info("3")
     print("3")
