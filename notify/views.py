@@ -9,6 +9,9 @@ import httpx ,json ,datetime
 from django.utils import timezone
 from django.contrib.auth.decorators import user_passes_test
 from django.db import connection
+import logging          # 【新增】
+
+logger = logging.getLogger(__name__)   # 【新增】
 
 # Create your views here.
 
