@@ -202,7 +202,12 @@ def create_account(request):
 #     expire_date = timezone.make_aware(expire_date)
     print("2")
     logger.info("2")
-    
+    expire_date = timezone.make_aware(
+        datetime.datetime.strptime(
+            data["expire_date"],
+            "%Y-%m-%d %H:%M:%S"
+        )
+    )
     try:
         # 嘗試取得VirtualAccount，如果沒有就建立
         virtual_account, created = VirtualAccount.objects.get_or_create(
@@ -211,7 +216,7 @@ def create_account(request):
                       'v_account': data["v_account"],
                       'trade_amt': data["trade_amt"],
 #                       'expire_date': expire_date,
-                      'expire_date': data['expire_date'],
+                      'expire_date': expire_date,
                       'status': data["status"],
                     }
         )
@@ -224,6 +229,7 @@ def create_account(request):
         return JsonResponse({"status":False, "message": "虛擬帳號建立失敗" }, status=500)
     logger.info("3")
     print("3")
+    
     return JsonResponse({ "status":True,
         "merchant_trade_no": virtual_account.merchant_trade_no,
         "bank_code": virtual_account.bank_code,
