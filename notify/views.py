@@ -264,7 +264,7 @@ def simulate_paid(request, merchant_trade_no):
 
     payload = {
         "merchant_trade_no": account.merchant_trade_no,
-        "trade_amt": str(account.trade_amt),
+        "trade_amt": int(account.trade_amt),
         "bank_code": account.bank_code,
         "v_account": account.v_account,
         "expire_date": account.expire_date.strftime("%Y-%m-%d %H:%M:%S"),
