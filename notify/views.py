@@ -298,7 +298,7 @@ def simulate_paid(request, merchant_trade_no):
 
             print("1")
             
-            # 成功 → 導回查詢頁,不帶 query string
+        # 模擬成功 → 導回查詢頁,不帶 query string
         return redirect("query_and_simulate")   # 換成你自己這個 view 的 url name
 		
     except Exception as ex:
@@ -359,17 +359,9 @@ def simulate_failed(request, merchant_trade_no):
 
             print("2")
             
-            # 👇 建議統一 API 回 JSON，不要 render
-            return JsonResponse({
-                "status": True,
-                "gateway_response": response.json()
-            })
-        else:
-            return render(request, "admin_tools/db_query.html", {'account':payload})
-#            return render(request, "account_detail.html", {'account':payload})
-#             return redirect(
-#                 f"notify/account_detail/{account}/"
-#             )
+        # 模擬失敗 → 導回查詢頁,不帶 query string
+        return redirect("query_and_simulate")   # 換成你自己這個 view 的 url name
+		
     except Exception as ex:
 
         print("綠界通知失敗")
