@@ -275,7 +275,7 @@ def simulate_paid(request, merchant_trade_no):
     payload["CheckMacValue"] = (
         generate_check_mac_value(payload,settings.ECPAY_HASH_KEY,settings.ECPAY_HASH_IV)
     )
-
+    print("simulate_paid : payload['CheckMacValue']=",payload["CheckMacValue"])
     try:        
         response = httpx.post(
 
@@ -337,7 +337,7 @@ def simulate_failed(request, merchant_trade_no):
     payload["CheckMacValue"] = (
         generate_check_mac_value(payload,settings.ECPAY_HASH_KEY,settings.ECPAY_HASH_IV)
     )
-    
+    print("simulate_paid : payload['CheckMacValue']=",payload["CheckMacValue"])    
     try:        
         response = httpx.post(
 
