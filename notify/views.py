@@ -395,17 +395,8 @@ def simulate_paid(request, merchant_trade_no):
             f"，通知商店時發生錯誤，請重新操作。"
         )
 
-        return JsonResponse(
-            {
-                "status": "failed",
-                "message": (
-                    f"訂單 {merchant_trade_no} 目前狀態為"
-                    f"「{account.status}」，"
-                    f"通知商店時發生錯誤：{str(ex)}"
-                )
-            },
-            status=500
-        )
+    # 最後重新導回原本的網頁
+    return redirect("query_and_simulate")
 
 @csrf_exempt
 def simulate_failed(request, merchant_trade_no):
