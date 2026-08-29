@@ -254,66 +254,157 @@ def account_detail(request, merchant_trade_no):
     return render(request, "account_detail.html", {"account": account})
 
 @csrf_exempt
+@user_passes_test(is_admin, login_url='/admin/login/')
+@transaction.atomic
 def simulate_paid(request, merchant_trade_no):
 
-    account = VirtualAccount.objects.get(merchant_trade_no=merchant_trade_no)
+    try:
+        account = VirtualAccount.objects.get(
+            merchant_trade_no=merchant_trade_no
+        )
+    except VirtualAccount.DoesNotExist:
+        logger.warning(
+            "simulate_paid: 找不到訂單 merchant_trade_no=%s",
+            merchant_trade_no
+        )
 
+        messages.error(
+            request,
+            f"找不到訂單 {merchant_trade_no}"
+        )
+
+        return JsonResponse(
+            {
+                "status": "failed",
+                "message": f"找不到該筆訂單編號：{merchant_trade_no}"
+            },
+            status=404
+        )
+
+    # 更新 ATM VirtualAccount 狀態
     account.status = "paid"
-
     account.save()
+
+    logger.info(
+        "simulate_paid: 訂單狀態更新為 paid, merchant_trade_no=%s",
+        merchant_trade_no
+    )
 
     payload = {
         "merchant_trade_no": account.merchant_trade_no,
         "trade_amt": int(account.trade_amt),
         "bank_code": account.bank_code,
         "v_account": account.v_account,
-        "expire_date": account.expire_date.strftime("%Y-%m-%d %H:%M:%S"),
+        "expire_date": account.expire_date.strftime(
+            "%Y-%m-%d %H:%M:%S"
+        ),
         "status": "paid",
-#         "created_at": account.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+        # "created_at": account.created_at.strftime("%Y-%m-%d %H:%M:%S"),
     }
 
-    payload["CheckMacValue"] = (
-        generate_check_mac_value(payload,settings.ECPAY_HASH_KEY,settings.ECPAY_HASH_IV)
+    payload["CheckMacValue"] = generate_check_mac_value(
+        payload,
+        settings.ECPAY_HASH_KEY,
+        settings.ECPAY_HASH_IV
     )
-    print("simulate_paid : payload['CheckMacValue']=",payload["CheckMacValue"])
-    try:        
+
+    logger.debug(
+        "simulate_paid: CheckMacValue 已產生, merchant_trade_no=%s",
+        merchant_trade_no
+    )
+
+    try:
         response = httpx.post(
-
-#            "http://127.0.0.1:8001/gateway/payment_notify/",
             f"{settings.HF_SPACE_ECPAY_MOCK_URL}/gateway/payment_notify/",
-
             json=payload,
-
             timeout=10
         )
 
-        print("status_code =", response.status_code)
-        print("response.text =", response.text)
-            
-        if response.status_code != 200:
-            return JsonResponse({
-                "status": False,
-                "error": response.text
-            }, status=400)
+        logger.info(
+            "simulate_paid: payment_notify response, "
+            "merchant_trade_no=%s, status_code=%s",
+            merchant_trade_no,
+            response.status_code
+        )
 
-            print("1")
-            
-        # 模擬成功 → 導回查詢頁,不帶 query string
-        return redirect("query_and_simulate")   # 換成你自己這個 view 的 url name
-		
+        logger.debug(
+            "simulate_paid: payment_notify response.text=%s",
+            response.text
+        )
+
+        if response.status_code == 200:
+
+            messages.success(
+                request,
+                f"訂單 {merchant_trade_no} 目前狀態為「{account.status}」"
+                f"，模擬 ATM 付款成功，已同步通知商店！"
+            )
+
+            return JsonResponse(
+                {
+                    "status": "success",
+                    "message": (
+                        f"訂單 {merchant_trade_no} 目前狀態為"
+                        f"「{account.status}」，"
+                        f"模擬 ATM 付款成功，已同步通知商店！"
+                    )
+                },
+                status=200
+            )
+
+        else:
+
+            logger.warning(
+                "simulate_paid: payment_notify 失敗, "
+                "merchant_trade_no=%s, status_code=%s, response=%s",
+                merchant_trade_no,
+                response.status_code,
+                response.text
+            )
+
+            messages.error(
+                request,
+                f"訂單 {merchant_trade_no} 目前狀態為「{account.status}」"
+                f"，未能同步通知商店！"
+            )
+
+            return JsonResponse(
+                {
+                    "status": "failed",
+                    "message": (
+                        f"訂單 {merchant_trade_no} 目前狀態為"
+                        f"「{account.status}」，"
+                        f"付款狀態已更新，但未能同步通知商店！"
+                    ),
+                    "error": response.text
+                },
+                status=400
+            )
+
     except Exception as ex:
 
-        print("綠界通知失敗")
-        print(ex)
-        
-        return JsonResponse({
-            "status": False,
-            "message": str(ex)
-        }, status=500)
-    
-    return JsonResponse({
-            "status":True
-    })
+        logger.exception(
+            "simulate_paid: 綠界通知失敗, merchant_trade_no=%s",
+            merchant_trade_no
+        )
+
+        messages.error(
+            request,
+            f"訂單 {merchant_trade_no} 目前狀態為「{account.status}」"
+            f"，通知商店時發生錯誤，請重新操作。"
+        )
+
+        return JsonResponse(
+            {
+                "status": "failed",
+                "message": (
+                    f"訂單 {merchant_trade_no} 目前狀態為"
+                    f"「{account.status}」，"
+                    f"通知商店時發生錯誤：{str(ex)}"
+                )
+            },
+            status=500
+        )
 
 @csrf_exempt
 def simulate_failed(request, merchant_trade_no):
