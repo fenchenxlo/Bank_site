@@ -8,7 +8,8 @@ from django.views.decorators.http import require_POST
 import httpx ,json ,datetime 
 from django.utils import timezone
 from django.contrib.auth.decorators import user_passes_test
-from django.db import connection
+from django.db import transaction, IntegrityError, connection
+from django.contrib import messages
 import logging          # 【新增】
 
 logger = logging.getLogger(__name__)   # 【新增】
