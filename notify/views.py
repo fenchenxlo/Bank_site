@@ -399,65 +399,119 @@ def simulate_paid(request, merchant_trade_no):
     return redirect("query_and_simulate")
 
 @csrf_exempt
+@user_passes_test(is_admin, login_url='/admin/login/')
+@transaction.atomic
 def simulate_failed(request, merchant_trade_no):
 
-    account = VirtualAccount.objects.get(merchant_trade_no=merchant_trade_no)
-    
-    account.status = "failed"
+    try:
+        account = VirtualAccount.objects.get(
+            merchant_trade_no=merchant_trade_no
+        )
+    except VirtualAccount.DoesNotExist:
 
+        logger.warning(
+            "simulate_failed: 找不到訂單 merchant_trade_no=%s",
+            merchant_trade_no
+        )
+
+        messages.error(
+            request,
+            f"找不到訂單 {merchant_trade_no}"
+        )
+
+        return redirect("query_and_simulate")
+
+    # 更新 ATM VirtualAccount 狀態
+    account.status = "failed"
     account.save()
-    
+
+    logger.info(
+        "simulate_failed: 訂單狀態更新為 failed, merchant_trade_no=%s",
+        merchant_trade_no
+    )
+
     payload = {
         "merchant_trade_no": account.merchant_trade_no,
         "trade_amt": int(account.trade_amt),
         "bank_code": account.bank_code,
         "v_account": account.v_account,
-        "expire_date": account.expire_date.strftime("%Y-%m-%d %H:%M:%S"),
+        "expire_date": account.expire_date.strftime(
+            "%Y-%m-%d %H:%M:%S"
+        ),
         "status": "failed",
-#         "created_at": account.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+        # "created_at": account.created_at.strftime("%Y-%m-%d %H:%M:%S"),
     }
 
-    payload["CheckMacValue"] = (
-        generate_check_mac_value(payload,settings.ECPAY_HASH_KEY,settings.ECPAY_HASH_IV)
+    payload["CheckMacValue"] = generate_check_mac_value(
+        payload,
+        settings.ECPAY_HASH_KEY,
+        settings.ECPAY_HASH_IV
     )
-    print("simulate_paid : payload['CheckMacValue']=",payload["CheckMacValue"])    
-    try:        
-        response = httpx.post(
 
-#            "http://127.0.0.1:8001/gateway/payment_notify/",
+    logger.debug(
+        "simulate_failed: CheckMacValue 已產生, merchant_trade_no=%s",
+        merchant_trade_no
+    )
+
+    try:
+
+        response = httpx.post(
             f"{settings.HF_SPACE_ECPAY_MOCK_URL}/gateway/payment_notify/",
             json=payload,
-
             timeout=10
         )
 
-        print("status_code =", response.status_code)
-        print("response.text =", response.text)
-            
-        if response.status_code != 200:
-            return JsonResponse({
-                "status": False,
-                "error": response.text
-            }, status=400)
+        logger.info(
+            "simulate_failed: payment_notify response, "
+            "merchant_trade_no=%s, status_code=%s",
+            merchant_trade_no,
+            response.status_code
+        )
 
-            print("2")
-            
-        # 模擬失敗 → 導回查詢頁,不帶 query string
-        return redirect("query_and_simulate")   # 換成你自己這個 view 的 url name
-		
+        logger.debug(
+            "simulate_failed: payment_notify response.text=%s",
+            response.text
+        )
+
+        if response.status_code == 200:
+
+            messages.success(
+                request,
+                f"訂單 {merchant_trade_no} 目前狀態為「{account.status}」"
+                f"，模擬 ATM 付款失敗，已同步通知商店！"
+            )
+
+        else:
+
+            logger.warning(
+                "simulate_failed: payment_notify 失敗, "
+                "merchant_trade_no=%s, status_code=%s",
+                merchant_trade_no,
+                response.status_code
+            )
+
+            messages.error(
+                request,
+                f"訂單 {merchant_trade_no} 目前狀態為「{account.status}」"
+                f"，付款失敗狀態已更新，但未能同步通知商店！"
+            )
+
     except Exception as ex:
 
-        print("綠界通知失敗")
-        print(ex)
-        
-        return {
-            "status": False,
-            "message": str(ex)
-        }
-    
-    return JsonResponse({
-            "status":True
-    })
+        logger.exception(
+            "simulate_failed: 綠界通知失敗, merchant_trade_no=%s",
+            merchant_trade_no
+        )
+
+        messages.error(
+            request,
+            f"訂單 {merchant_trade_no} 目前狀態為「{account.status}」"
+            f"，通知商店時發生錯誤，請重新操作。"
+        )
+
+    # 最後重新導回原本的查詢頁
+    return redirect("query_and_simulate")
+
 
 #     return redirect(
 #         f"notify/account_detail/{account.merchant_trade_no}/"
