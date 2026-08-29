@@ -264,6 +264,7 @@ def simulate_paid(request, merchant_trade_no):
             merchant_trade_no=merchant_trade_no
         )
     except VirtualAccount.DoesNotExist:
+
         logger.warning(
             "simulate_paid: 找不到訂單 merchant_trade_no=%s",
             merchant_trade_no
@@ -271,16 +272,10 @@ def simulate_paid(request, merchant_trade_no):
 
         messages.error(
             request,
-            f"找不到訂單 {merchant_trade_no}"
+            f"找不到該筆訂單編號：{merchant_trade_no}"
         )
 
-        return JsonResponse(
-            {
-                "status": "failed",
-                "message": f"找不到該筆訂單編號：{merchant_trade_no}"
-            },
-            status=404
-        )
+        return redirect("query_and_simulate")
 
     # 更新 ATM VirtualAccount 狀態
     account.status = "paid"
@@ -300,7 +295,6 @@ def simulate_paid(request, merchant_trade_no):
             "%Y-%m-%d %H:%M:%S"
         ),
         "status": "paid",
-        # "created_at": account.created_at.strftime("%Y-%m-%d %H:%M:%S"),
     }
 
     payload["CheckMacValue"] = generate_check_mac_value(
@@ -315,6 +309,7 @@ def simulate_paid(request, merchant_trade_no):
     )
 
     try:
+
         response = httpx.post(
             f"{settings.HF_SPACE_ECPAY_MOCK_URL}/gateway/payment_notify/",
             json=payload,
@@ -341,45 +336,19 @@ def simulate_paid(request, merchant_trade_no):
                 f"，模擬 ATM 付款成功，已同步通知商店！"
             )
 
-            return JsonResponse(
-                {
-                    "status": "success",
-                    "message": (
-                        f"訂單 {merchant_trade_no} 目前狀態為"
-                        f"「{account.status}」，"
-                        f"模擬 ATM 付款成功，已同步通知商店！"
-                    )
-                },
-                status=200
-            )
-
         else:
 
             logger.warning(
                 "simulate_paid: payment_notify 失敗, "
-                "merchant_trade_no=%s, status_code=%s, response=%s",
+                "merchant_trade_no=%s, status_code=%s",
                 merchant_trade_no,
-                response.status_code,
-                response.text
+                response.status_code
             )
 
             messages.error(
                 request,
                 f"訂單 {merchant_trade_no} 目前狀態為「{account.status}」"
-                f"，未能同步通知商店！"
-            )
-
-            return JsonResponse(
-                {
-                    "status": "failed",
-                    "message": (
-                        f"訂單 {merchant_trade_no} 目前狀態為"
-                        f"「{account.status}」，"
-                        f"付款狀態已更新，但未能同步通知商店！"
-                    ),
-                    "error": response.text
-                },
-                status=400
+                f"，付款狀態已更新，但未能同步通知商店！"
             )
 
     except Exception as ex:
@@ -397,6 +366,7 @@ def simulate_paid(request, merchant_trade_no):
 
     # 最後重新導回原本的網頁
     return redirect("query_and_simulate")
+
 
 @csrf_exempt
 @user_passes_test(is_admin, login_url='/admin/login/')
