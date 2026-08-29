@@ -42,6 +42,15 @@
 </head>
 <body>
 
+{% if messages %}
+    {% for message in messages %}
+        <p style="color: red; font-size: 20px;">
+            {{ message }}
+        </p>
+    {% endfor %}
+{% endif %}
+
+
 <!-- ==================== 頁首:標題 + 登出連結 ====================
      這裡直接把登出連結寫死在頁面最上方,不管查詢狀態如何、
      有沒有選 table/欄位,登出連結都會一直顯示,不會消失。 -->
