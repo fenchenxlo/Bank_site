@@ -14,12 +14,16 @@ class VirtualAccount(models.Model):
     )
 
     bank_code = models.CharField(
-        max_length=3
+        max_length=3,
+        null=True,
+        blank=True
     )
 
     v_account = models.CharField(
         max_length=20,
-        unique=True
+        unique=True,
+        null=True,
+        blank=True
     )
 
     trade_amt = models.DecimalField(
@@ -27,17 +31,26 @@ class VirtualAccount(models.Model):
         decimal_places=2
     )
 
-    expire_date = models.DateTimeField()
+    expire_date = models.DateTimeField(
+        null=True,
+        blank=True
+    )
 
+    # 【修改】
+    # 建立 ATM 帳號時固定為 atm_created。
+    # 尚未付款則為 unpaid。
     status = models.CharField(
         max_length=20,
         choices=[
-            ("atm_created", "Atm_Created"),
-            ("unpaid", "UnPaid"),
+		    ("pending", "Pending"),
+		    ("cod_created", "COD_Created"),
+            ("atm_created", "ATM Created"),
+            ("unpaid", "Unpaid"),
             ("paid", "Paid"),
             ("expired", "Expired"),
+            ("cancelled", "Cancelled"),   # 【新增】商城取消訂單，同步取消 ATM 虛擬帳號
         ],
-        default="unpaid"
+        default="atm_created"
     )
 
     created_at = models.DateTimeField(

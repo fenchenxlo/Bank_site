@@ -16,14 +16,22 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
-from django.http import HttpResponse
-from notify.views import (
-     home,
- )
+from django.views.generic import RedirectView   # 【新增】首頁轉址
+# from notify.views import (
+#     home,
+# )
 
 urlpatterns = [
-    path('', home, name='home'),
+    # 【新增】進入 127.0.0.1:8002/ 時，自動轉到 ATM 查詢 + 模擬付款頁
+    path(
+        "",
+        RedirectView.as_view(
+            pattern_name="notify:query_and_simulate",
+            permanent=False,
+        ),
+        name="root_redirect",
+    ),
+#     path('', home, name='home'),
     path('admin/', admin.site.urls),
     path("notify/", include("notify.urls")),  # 把 notify app 的 urls 串進來
-#    path("", lambda request: HttpResponse("Bank site Server OK")),
 ]

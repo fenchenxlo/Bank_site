@@ -1,3 +1,51 @@
+# ============================================================
+# Bank_Mock/notify/views.py
+# ============================================================
+#
+# 【架構說明】
+#
+# View 只負責：
+#
+# 1. 接收 HTTP Request
+# 2. 解析 Request
+# 3. 呼叫 Service
+# 4. 將 Service 結果轉成 HTTP Response
+#
+# View 不負責：
+#
+# ❌ Django ORM
+# ❌ VirtualAccount.objects
+# ❌ httpx.post()
+# ❌ 產生 bank_code
+# ❌ 產生 v_account
+# ❌ 產生 expire_date
+# ❌ 呼叫 ECPay Mock
+#
+# 實際架構：
+#
+# View
+#   ↓
+# BankAccountService
+#   ↓
+# BankAccountGateway Interface
+#   ↓
+# BankAccountAdapter
+#   ↓
+# ORM / HTTPX
+#
+# ============================================================
+
+
+import json, random, datetime
+import logging
+from util.ChkMacVal import generate_check_mac_value
+from django.conf import settings
+
+# ============================================================
+# Django
+# ============================================================
+
+from django.http import JsonResponse
 from django.shortcuts import render, get_object_or_404, redirect
 from django.views.decorators.csrf import csrf_exempt
 from django.http import HttpResponse, JsonResponse, HttpResponseBadRequest
@@ -10,11 +58,39 @@ from django.utils import timezone
 from django.contrib.auth.decorators import user_passes_test
 from django.db import transaction, IntegrityError, connection
 from django.contrib import messages
-import logging          # 【新增】
 
-logger = logging.getLogger(__name__)   # 【新增】
 
-# Create your views here.
+# ============================================================
+# Service / Adapter
+# ============================================================
+
+from .adapters.bank_account_adapter import BankAccountAdapter
+from .services.bank_account_service import BankAccountService
+
+
+# ============================================================
+# Logger
+# ============================================================
+
+logger = logging.getLogger(__name__)
+
+
+# ============================================================
+# Service 初始化
+# ============================================================
+#
+# 【保留】
+#
+# 明確建立：
+#
+# Adapter
+#     ↓
+# BankAccountService
+#
+# 目前專案規模下，
+# 不另外增加 Factory / DI Container。
+#
+# ============================================================
 
 def home(request):   
     return render(request, 'home.html')
@@ -154,336 +230,776 @@ def query_and_simulate(request):
     }
     return render(request, 'admin_tools/query_simulate.html', context)
 
+def get_bank_account_service():
+    """
+    建立 BankAccountService。
 
-# 銀行接收 Callback ,create_account
+    【保留】
+
+    Dependency Injection：
+
+        BankAccountAdapter
+                ↓
+        BankAccountService
+                ↓
+              View
+    """
+
+    gateway = BankAccountAdapter()
+
+    service = BankAccountService(
+        gateway=gateway
+    )
+
+    return service
+
+
+# ============================================================
+# Home
+# ============================================================
+
+def home(request):
+    """
+    Bank Mock 首頁。
+
+    【保留】
+
+    此 View 不涉及資料庫。
+    """
+
+    return render(
+        request,
+        "home.html"
+    )
+
+
+# ============================================================
+# 建立 ATM 虛擬帳號
+# ============================================================
+
 @csrf_exempt
 def create_account(request):
-    
+    """
+    建立 ATM 虛擬帳號。
+
+    【保留 / 修改】
+
+    View → Service → Interface → Adapter
+
+    View 不直接操作 ORM 或 HTTPX。
+
+    【修改】
+
+    request_data 會完整傳遞到 Service，
+    再由 Service 傳給 Gateway / Adapter，
+    讓 Adapter 驗證 CheckMacValue。
+    """
+
+    # ========================================================
+    # 【新增】
+    # 只允許 POST
+    # ========================================================
+
     if request.method != "POST":
-        return HttpResponse("method error")
+
+        return JsonResponse(
+            {
+                "status": False,
+                "message": "只允許 POST"
+            },
+            status=405
+        )
+
+    # ========================================================
+    # 【新增】
+    # 解析 JSON
+    # ========================================================
 
     try:
-#         if request.content_type == "application/json":
-#             payment_data = json.loads(request.body.decode("utf-8"))
-            
-        data = request.POST.dict() if request.POST else request.body
-            # 如果商城端用 JSON 傳送
-        if isinstance(data, (bytes, bytearray)):
-            data = json.loads(data.decode("utf-8"))
-            print("1")
-            logger.info("1")
-#            payment_data  = json.loads(request.body.decode("utf-8"))
+
+        if not request.body:
+
+            return JsonResponse(
+                {
+                    "status": False,
+                    "message": "Request body 不可為空"
+                },
+                status=400
+            )
+
+        data = json.loads(
+            request.body.decode("utf-8")
+        )
+
     except json.JSONDecodeError:
-        return HttpResponseBadRequest("JSON 格式錯誤")
-#    payment_data = request.POST.dict()
-
-#     recv_mac = payment_data.copy()
-    
-    recv_mac = data.pop("CheckMacValue", "")
-
-    local_mac = generate_check_mac_value(
-        data,
-        settings.ECPAY_HASH_KEY,
-        settings.ECPAY_HASH_IV
-    )
-    
-#     print("recv_mac =", recv_mac)
-#     print("local_mac =", local_mac)
-#     print("data =", data)
-
-    if recv_mac != local_mac:
-        return JsonResponse({
-            "status":"error",
-            "message":"MAC驗證失敗"
-        }, status=400)
-    
-    print("data['expire_date']: ",data["expire_date"])
-    print("data['expire_date']: ",type(data["expire_date"]))
-#     expire_date = datetime.strptime(data["expire_date"], "%Y-%m-%d %H:%M:%S")
-#     expire_date = timezone.make_aware(expire_date)
-    print("2")
-    logger.info("2")
-    expire_date = timezone.make_aware(
-        datetime.datetime.strptime(
-            data["expire_date"],
-            "%Y-%m-%d %H:%M:%S"
-        )
-    )
-    try:
-        # 嘗試取得VirtualAccount，如果沒有就建立
-        virtual_account, created = VirtualAccount.objects.get_or_create(
-            merchant_trade_no=data["merchant_trade_no"],
-            defaults={'bank_code': data["bank_code"],
-                      'v_account': data["v_account"],
-                      'trade_amt': data["trade_amt"],
-#                       'expire_date': expire_date,
-                      'expire_date': expire_date,
-                      'status': data["status"],
-                    }
-        )
-    except Exception as ex:
-
-        print("銀行通知失敗: 虛擬帳號 取得或建立失敗")
-        logger.info("銀行通知失敗: 虛擬帳號 取得或建立失敗")
-        print(ex)
-        logger.info(f"Exception as ex: {ex}")
-        return JsonResponse({"status":False, "message": "虛擬帳號建立失敗" }, status=500)
-    logger.info("3")
-    print("3")
-    
-    return JsonResponse({ "status":True,
-        "merchant_trade_no": virtual_account.merchant_trade_no,
-        "bank_code": virtual_account.bank_code,
-        "v_account": virtual_account.v_account,
-        "expire_date": virtual_account.expire_date.strftime("%Y-%m-%d %H:%M:%S"),
-        "trade_amt": str(virtual_account.trade_amt),
-        "payment_status": virtual_account.status
-    })
-
-@csrf_exempt
-def account_detail(request, merchant_trade_no):
-    
-    # 取得account
-    account = get_object_or_404(VirtualAccount,merchant_trade_no=merchant_trade_no)
-#     account = (
-#         
-#         VirtualAccount.objects.get(
-#             merchant_trade_no=merchant_trade_no
-#         )
-#     )
-
-    return render(request, "account_detail.html", {"account": account})
-
-@csrf_exempt
-@user_passes_test(is_admin, login_url='/admin/login/')
-@transaction.atomic
-def simulate_paid(request, merchant_trade_no):
-
-    try:
-        account = VirtualAccount.objects.get(
-            merchant_trade_no=merchant_trade_no
-        )
-    except VirtualAccount.DoesNotExist:
 
         logger.warning(
-            "simulate_paid: 找不到訂單 merchant_trade_no=%s",
-            merchant_trade_no
+            "Bank Mock create_account 收到無效 JSON"
         )
 
-        messages.error(
-            request,
-            f"找不到該筆訂單編號：{merchant_trade_no}"
+        return JsonResponse(
+            {
+                "status": False,
+                "message": "JSON 格式錯誤"
+            },
+            status=400
         )
 
-        return redirect("query_and_simulate")
+    except UnicodeDecodeError:
 
-    # 更新 ATM VirtualAccount 狀態
-    account.status = "paid"
-    account.save()
+        logger.warning(
+            "Bank Mock create_account 收到無效 UTF-8"
+        )
 
-    logger.info(
-        "simulate_paid: 訂單狀態更新為 paid, merchant_trade_no=%s",
-        merchant_trade_no
+        return JsonResponse(
+            {
+                "status": False,
+                "message": "Request Body 編碼錯誤"
+            },
+            status=400
+        )
+
+    # ========================================================
+    # 【新增】
+    # 確認 JSON Object
+    # ========================================================
+
+    if not isinstance(data, dict):
+
+        return JsonResponse(
+            {
+                "status": False,
+                "message": "Request JSON 必須是 Object"
+            },
+            status=400
+        )
+
+    # ========================================================
+    # 【新增】
+    # 驗證 CheckMacValue
+    #
+    # 收到 data 後立即驗證，
+    # 驗證成功才繼續往下執行。
+    # ========================================================
+
+    received_check_mac_value = data.get(
+        "CheckMacValue"
     )
 
-    payload = {
-        "merchant_trade_no": account.merchant_trade_no,
-        "trade_amt": int(account.trade_amt),
-        "bank_code": account.bank_code,
-        "v_account": account.v_account,
-        "expire_date": account.expire_date.strftime(
-            "%Y-%m-%d %H:%M:%S"
-        ),
-        "status": "paid",
-    }
+    if not received_check_mac_value:
 
-    payload["CheckMacValue"] = generate_check_mac_value(
-        payload,
+        logger.warning(
+            "Bank Mock create_account 缺少 CheckMacValue"
+        )
+
+        return JsonResponse(
+            {
+                "status": False,
+                "message": "缺少 CheckMacValue"
+            },
+            status=400
+        )
+
+    verify_data = data.copy()
+
+    verify_data.pop(
+        "CheckMacValue",
+        None
+    )
+
+    expected_check_mac_value = generate_check_mac_value(
+        verify_data,
         settings.ECPAY_HASH_KEY,
         settings.ECPAY_HASH_IV
     )
 
-    logger.debug(
-        "simulate_paid: CheckMacValue 已產生, merchant_trade_no=%s",
-        merchant_trade_no
+    if received_check_mac_value != expected_check_mac_value:
+
+        logger.warning(
+            "Bank Mock create_account CheckMacValue 驗證失敗"
+        )
+
+        return JsonResponse(
+            {
+                "status": False,
+                "message": "CheckMacValue 驗證失敗"
+            },
+            status=400
+        )
+
+    # ========================================================
+    # 【新增】
+    # 取得必要欄位
+    # ========================================================
+
+    merchant_trade_no = data.get(
+        "merchant_trade_no"
     )
 
+    trade_amt = data.get(
+        "trade_amt"
+    )
+
+    # bank_code = data["bank_code"] = "013" # 國泰世華銀行代碼
+    # v_account = data["v_account"] = f"013{random.randint(100000000000,999999999999)}" # 虛擬帳戶
+    # expire_date = data["expire_date"] = (datetime.datetime.now() + datetime.timedelta(days=3)).strftime("%Y-%m-%d %H:%M:%S")
+    data["bank_code"] = "013" # 國泰世華銀行代碼
+    data["v_account"] = f"013{random.randint(100000000000,999999999999)}" # 虛擬帳戶
+    data["expire_date"] = (datetime.datetime.now() + datetime.timedelta(days=3)).strftime("%Y-%m-%d %H:%M:%S")
+    
+    logging.info("bank_code=%s", data["bank_code"])
+    logging.info("v_account=%s", data["v_account"])
+    logging.info("expire_date=%s", data["expire_date"])
+    
+    # ========================================================
+    # 【新增】
+    # 基本 Request 驗證
+    # ========================================================
+
+    if not merchant_trade_no:
+
+        return JsonResponse(
+            {
+                "status": False,
+                "message": "缺少 merchant_trade_no"
+            },
+            status=400
+        )
+
+    if trade_amt in (None, ""):
+
+        return JsonResponse(
+            {
+                "status": False,
+                "message": "缺少 trade_amt"
+            },
+            status=400
+        )
+
+    # ========================================================
+    # 【保留】
+    # 明確初始化 Service
+    # ========================================================
+
+    service = get_bank_account_service()
+
+    # ========================================================
+    # 【修改】
+    # 呼叫 Service
+    #
+    # request_data=data 必須傳下去。
+    #
+    # Service
+    #     ↓
+    # Gateway
+    #     ↓
+    # Adapter
+    #     ↓
+    # CheckMacValue
+    # ========================================================
+
     try:
-
-        response = httpx.post(
-            f"{settings.HF_SPACE_ECPAY_MOCK_URL}/gateway/payment_notify/",
-            json=payload,
-            timeout=10
-        )
-
         logger.info(
-            "simulate_paid: payment_notify response, "
-            "merchant_trade_no=%s, status_code=%s",
-            merchant_trade_no,
-            response.status_code
+            "data：%s",
+            data
+        )
+        result = service.create_account(
+            merchant_trade_no=merchant_trade_no,
+            trade_amt=trade_amt,
+            request_data=data,
         )
 
-        logger.debug(
-            "simulate_paid: payment_notify response.text=%s",
-            response.text
+    except ValueError as ex:
+
+        logger.warning(
+            "Bank Mock create_account 業務驗證失敗：%s",
+            ex
         )
 
-        if response.status_code == 200:
-
-            messages.success(
-                request,
-                f"訂單 {merchant_trade_no} 目前狀態為「{account.status}」"
-                f"，模擬 ATM 付款成功，已同步通知商店！"
-            )
-
-        else:
-
-            logger.warning(
-                "simulate_paid: payment_notify 失敗, "
-                "merchant_trade_no=%s, status_code=%s",
-                merchant_trade_no,
-                response.status_code
-            )
-
-            messages.error(
-                request,
-                f"訂單 {merchant_trade_no} 目前狀態為「{account.status}」"
-                f"，付款狀態已更新，但未能同步通知商店！"
-            )
+        return JsonResponse(
+            {
+                "status": False,
+                "message": str(ex)
+            },
+            status=400
+        )
 
     except Exception as ex:
 
         logger.exception(
-            "simulate_paid: 綠界通知失敗, merchant_trade_no=%s",
-            merchant_trade_no
+            "Bank Mock create_account 發生未預期錯誤"
         )
 
-        messages.error(
-            request,
-            f"訂單 {merchant_trade_no} 目前狀態為「{account.status}」"
-            f"，通知商店時發生錯誤，請重新操作。"
+        return JsonResponse(
+            {
+                "status": False,
+                "message": "Bank Mock 建立虛擬帳號失敗",
+                "error": str(ex),
+            },
+            status=500
         )
 
-    # 最後重新導回原本的網頁
-    return redirect("query_and_simulate")
+    # ========================================================
+    # 【保留】
+    # 回傳結果
+    # ========================================================
+
+    return JsonResponse(
+        result,
+        status=200
+    )
 
 
-@csrf_exempt
-@user_passes_test(is_admin, login_url='/admin/login/')
-@transaction.atomic
-def simulate_failed(request, merchant_trade_no):
+# ============================================================
+# 查詢 ATM 虛擬帳號
+# ============================================================
+
+def account_detail(
+    request,
+    merchant_trade_no
+):
+    """
+    顯示 ATM 虛擬帳號。
+
+    【保留】
+
+    View 不直接：
+
+        VirtualAccount.objects.get()
+
+    而是：
+
+        View
+          ↓
+        Service
+          ↓
+        Gateway
+          ↓
+        Adapter
+          ↓
+        ORM
+    """
+
+    # ========================================================
+    # 【新增】
+    # 只允許 GET
+    # ========================================================
+
+    if request.method != "GET":
+
+        return JsonResponse(
+            {
+                "status": False,
+                "message": "只允許 GET"
+            },
+            status=405
+        )
+
+    # ========================================================
+    # 【保留】
+    # 明確初始化 Service
+    # ========================================================
+
+    service = get_bank_account_service()
+
+    # ========================================================
+    # 【保留】
+    # 透過 Service 查詢
+    # ========================================================
 
     try:
-        account = VirtualAccount.objects.get(
+
+        result = service.get_account(
             merchant_trade_no=merchant_trade_no
         )
-    except VirtualAccount.DoesNotExist:
 
-        logger.warning(
-            "simulate_failed: 找不到訂單 merchant_trade_no=%s",
-            merchant_trade_no
+    except LookupError:
+
+        return JsonResponse(
+            {
+                "status": False,
+                "message": "找不到 ATM 虛擬帳號"
+            },
+            status=404
         )
 
-        messages.error(
-            request,
-            f"找不到訂單 {merchant_trade_no}"
+    except ValueError as ex:
+
+        return JsonResponse(
+            {
+                "status": False,
+                "message": str(ex)
+            },
+            status=400
         )
-
-        return redirect("query_and_simulate")
-
-    # 更新 ATM VirtualAccount 狀態
-    account.status = "failed"
-    account.save()
-
-    logger.info(
-        "simulate_failed: 訂單狀態更新為 failed, merchant_trade_no=%s",
-        merchant_trade_no
-    )
-
-    payload = {
-        "merchant_trade_no": account.merchant_trade_no,
-        "trade_amt": int(account.trade_amt),
-        "bank_code": account.bank_code,
-        "v_account": account.v_account,
-        "expire_date": account.expire_date.strftime(
-            "%Y-%m-%d %H:%M:%S"
-        ),
-        "status": "failed",
-        # "created_at": account.created_at.strftime("%Y-%m-%d %H:%M:%S"),
-    }
-
-    payload["CheckMacValue"] = generate_check_mac_value(
-        payload,
-        settings.ECPAY_HASH_KEY,
-        settings.ECPAY_HASH_IV
-    )
-
-    logger.debug(
-        "simulate_failed: CheckMacValue 已產生, merchant_trade_no=%s",
-        merchant_trade_no
-    )
-
-    try:
-
-        response = httpx.post(
-            f"{settings.HF_SPACE_ECPAY_MOCK_URL}/gateway/payment_notify/",
-            json=payload,
-            timeout=10
-        )
-
-        logger.info(
-            "simulate_failed: payment_notify response, "
-            "merchant_trade_no=%s, status_code=%s",
-            merchant_trade_no,
-            response.status_code
-        )
-
-        logger.debug(
-            "simulate_failed: payment_notify response.text=%s",
-            response.text
-        )
-
-        if response.status_code == 200:
-
-            messages.success(
-                request,
-                f"訂單 {merchant_trade_no} 目前狀態為「{account.status}」"
-                f"，模擬 ATM 付款失敗，已同步通知商店！"
-            )
-
-        else:
-
-            logger.warning(
-                "simulate_failed: payment_notify 失敗, "
-                "merchant_trade_no=%s, status_code=%s",
-                merchant_trade_no,
-                response.status_code
-            )
-
-            messages.error(
-                request,
-                f"訂單 {merchant_trade_no} 目前狀態為「{account.status}」"
-                f"，付款失敗狀態已更新，但未能同步通知商店！"
-            )
 
     except Exception as ex:
 
         logger.exception(
-            "simulate_failed: 綠界通知失敗, merchant_trade_no=%s",
-            merchant_trade_no
+            "Bank Mock account_detail 發生錯誤"
         )
 
-        messages.error(
-            request,
-            f"訂單 {merchant_trade_no} 目前狀態為「{account.status}」"
-            f"，通知商店時發生錯誤，請重新操作。"
+        return JsonResponse(
+            {
+                "status": False,
+                "message": "查詢 ATM 虛擬帳號失敗",
+                "error": str(ex),
+            },
+            status=500
         )
 
-    # 最後重新導回原本的查詢頁
-    return redirect("query_and_simulate")
+    # ========================================================
+    # 【保留】
+    # Render
+    #
+    # 這裡可以直接把 Model 傳給 Template，
+    # 因為 Template 可以處理 Django Model instance。
+    #
+    # 與 JsonResponse 不同。
+    # ========================================================
+
+    return render(
+        request,
+        "account_detail.html",
+        {
+            "account": result
+        }
+    )
 
 
-#     return redirect(
-#         f"notify/account_detail/{account.merchant_trade_no}/"
-#     )
+# ============================================================
+# 模擬 ATM 付款成功
+# ============================================================
 
+@csrf_exempt
+def simulate_paid(
+    request,
+    merchant_trade_no
+):
+    """
+    模擬 ATM 付款成功。
+
+    【保留】
+
+    View 不直接：
+
+        ❌ ORM
+        ❌ account.save()
+        ❌ httpx.post()
+
+    實際流程：
+
+        View
+          ↓
+        Service
+          ↓
+        Gateway
+          ↓
+        Adapter
+          ├── ORM
+          └── HTTPX → ECPay Mock
+    """
+
+    # ========================================================
+    # 【新增】
+    # 允許 GET / POST
+    # ========================================================
+
+    if request.method not in ("GET", "POST"):
+
+        return JsonResponse(
+            {
+                "status": False,
+                "message": "只允許 GET 或 POST"
+            },
+            status=405
+        )
+
+    # ========================================================
+    # 【保留】
+    # 明確初始化 Service
+    # ========================================================
+
+    service = get_bank_account_service()
+
+    # ========================================================
+    # 【保留】
+    # 呼叫 Service
+    # ========================================================
+
+    try:
+
+        result = service.simulate_paid(
+            merchant_trade_no=merchant_trade_no
+        )
+
+    except LookupError:
+
+        return JsonResponse(
+            {
+                "status": False,
+                "message": "找不到 ATM 虛擬帳號"
+            },
+            status=404
+        )
+
+    except ValueError as ex:
+
+        logger.warning(
+            "Bank Mock simulate_paid 業務錯誤：%s",
+            ex
+        )
+
+        return JsonResponse(
+            {
+                "status": False,
+                "message": str(ex)
+            },
+            status=400
+        )
+
+    except Exception as ex:
+
+        logger.exception(
+            "Bank Mock simulate_paid 發生未預期錯誤"
+        )
+
+        return JsonResponse(
+            {
+                "status": False,
+                "message": "模擬付款成功失敗",
+                "error": str(ex),
+            },
+            status=500
+        )
+
+    # ========================================================
+    # 【修改】
+    # 回傳 Service 結果
+    #
+    # Service 現在已經把 VirtualAccount
+    # 轉成 JSON-safe dict。
+    #
+    # 因此這裡不會再發生：
+    #
+    # TypeError:
+    # Object of type VirtualAccount
+    # is not JSON serializable
+    # ========================================================
+
+    return JsonResponse(
+        result,
+        status=200
+    )
+
+
+# ============================================================
+# 模擬 ATM 付款失敗
+# ============================================================
+
+@csrf_exempt
+def simulate_failed(
+    request,
+    merchant_trade_no
+):
+    """
+    模擬 ATM 付款失敗。
+
+    【保留】
+
+    View 不直接操作 ORM，也不直接呼叫 HTTPX。
+
+    目前 VirtualAccount 沒有 failed status，
+    因此：
+
+        Bank DB 不修改成 failed
+
+    只將：
+
+        status = failed
+
+    callback 給 ECPay Mock。
+
+    ECPay Mock 再決定如何處理 Store Payment。
+    """
+
+    # ========================================================
+    # 【新增】
+    # 允許 GET / POST
+    # ========================================================
+
+    if request.method not in ("GET", "POST"):
+
+        return JsonResponse(
+            {
+                "status": False,
+                "message": "只允許 GET 或 POST"
+            },
+            status=405
+        )
+
+    # ========================================================
+    # 【保留】
+    # 明確初始化 Service
+    # ========================================================
+
+    service = get_bank_account_service()
+
+    # ========================================================
+    # 【保留】
+    # 呼叫 Service
+    # ========================================================
+
+    try:
+
+        result = service.simulate_failed(
+            merchant_trade_no=merchant_trade_no
+        )
+
+    except LookupError:
+
+        return JsonResponse(
+            {
+                "status": False,
+                "message": "找不到 ATM 虛擬帳號"
+            },
+            status=404
+        )
+
+    except ValueError as ex:
+
+        logger.warning(
+            "Bank Mock simulate_failed 業務錯誤：%s",
+            ex
+        )
+
+        return JsonResponse(
+            {
+                "status": False,
+                "message": str(ex)
+            },
+            status=400
+        )
+
+    except Exception as ex:
+
+        logger.exception(
+            "Bank Mock simulate_failed 發生未預期錯誤"
+        )
+
+        return JsonResponse(
+            {
+                "status": False,
+                "message": "模擬付款失敗",
+                "error": str(ex),
+            },
+            status=500
+        )
+
+    # ========================================================
+    # 【修改】
+    # 回傳 Service 結果
+    #
+    # Service 已將 VirtualAccount
+    # 轉成 JSON-safe dict。
+    # ========================================================
+
+    return JsonResponse(
+        result,
+        status=200
+    )
+
+
+# ============================================================
+# 【新增】模擬 ATM 逾期未付款
+#
+# 只負責收 request / 回 JSON，不碰 ORM，
+# 實際流程在 BankAccountService.simulate_expired。
+# 錯誤處理與 simulate_failed 一致。
+# ============================================================
+# 【新增】必須加 @csrf_exempt（與 simulate_paid / simulate_failed 相同），
+# 否則頁面用 fetch POST 會被 CSRF 擋下回 403，前端就會解析 HTML 失敗
+@csrf_exempt
+def simulate_expired(request, merchant_trade_no):
+
+    if request.method not in ("GET", "POST"):
+        return JsonResponse(
+            {"status": False, "message": "只允許 GET 或 POST"},
+            status=405
+        )
+
+    service = get_bank_account_service()
+
+    try:
+        result = service.simulate_expired(
+            merchant_trade_no=merchant_trade_no
+        )
+    except LookupError:
+        return JsonResponse(
+            {"status": False, "message": "找不到 ATM 虛擬帳號"},
+            status=404
+        )
+    except ValueError as ex:
+        logger.warning("Bank Mock simulate_expired 業務錯誤：%s", ex)
+        return JsonResponse(
+            {"status": False, "message": str(ex)},
+            status=400
+        )
+    except Exception as ex:
+        logger.exception("Bank Mock simulate_expired 發生未預期錯誤")
+        return JsonResponse(
+            {"status": False, "message": "模擬逾期未付款失敗", "error": str(ex)},
+            status=500
+        )
+
+    return JsonResponse(result, status=200)
+
+
+# ============================================================
+# 【新增】取消 ATM 虛擬帳號
+# ECPay Mock → Bank Mock（server-to-server，POST JSON + CheckMacValue）
+# View 只收 request / 回 JSON，不碰 ORM；流程在 BankAccountService.cancel_account
+# ============================================================
+@csrf_exempt
+def cancel_account(request, merchant_trade_no):
+
+    if request.method != "POST":
+        return JsonResponse(
+            {"status": False, "message": "只允許 POST"},
+            status=405
+        )
+
+    try:
+        data = json.loads(request.body or b"{}")
+    except json.JSONDecodeError:
+        return JsonResponse(
+            {"status": False, "message": "JSON 格式錯誤"},
+            status=400
+        )
+
+    service = get_bank_account_service()
+
+    try:
+        result = service.cancel_account(
+            merchant_trade_no=merchant_trade_no,
+            request_data=data,
+        )
+    except LookupError:
+        return JsonResponse(
+            {"status": False, "message": "找不到 ATM 虛擬帳號"},
+            status=404
+        )
+    except ValueError as ex:
+        logger.warning("Bank Mock cancel_account 業務錯誤：%s", ex)
+        return JsonResponse(
+            {"status": False, "message": str(ex)},
+            status=400
+        )
+    except Exception as ex:
+        logger.exception("Bank Mock cancel_account 發生未預期錯誤")
+        return JsonResponse(
+            {"status": False, "message": "取消 ATM 帳號失敗", "error": str(ex)},
+            status=500
+        )
+
+    return JsonResponse(result, status=200)

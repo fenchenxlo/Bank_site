@@ -11,12 +11,39 @@
         select, input, button { padding: 6px; margin: 5px 0; }
 
         /* 頁首:標題 + 登出連結,固定顯示,不受查詢狀態影響 */
-        .page-header {
+        <!-- .page-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
             margin-bottom: 20px;
-        }
+        } -->
+		.page-header {
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+			margin-bottom: 20px;
+			gap: 20px;
+		}
+
+		/* 歡迎訊息 + 登出按鈕 */
+		.user-info {
+			display: flex;
+			align-items: center;
+			gap: 10px;
+			white-space: nowrap;
+		}
+
+		.user-info p {
+			margin: 0;
+		}
+
+		.user-info form {
+			margin: 0;
+		}
+
+		.user-info button {
+			margin: 0;
+		}
 
         /* 左右兩欄排版 */
         .layout {
@@ -42,6 +69,9 @@
 </head>
 <body>
 
+<!-- 【新增】模擬付款結果顯示區:由下方 JavaScript 寫入文字,預設隱藏 -->
+<div id="result-message" style="display:none; padding:12px 16px; margin-bottom:20px; border-radius:6px; font-size:18px;"></div>
+
 {% if messages %}
     {% for message in messages %}
         <p style="color: red; font-size: 20px;">
@@ -56,10 +86,18 @@
      有沒有選 table/欄位,登出連結都會一直顯示,不會消失。 -->
 <div class="page-header">
     <h1>資料庫查詢 + 模擬付款工具（管理員限定）</h1>
-    <p>
+    <!-- <p>
         歡迎，{{ user.username }}｜
         <a href="{% url 'admin:logout' %}">登出</a>
-    </p>
+    </p> -->
+	<div class="user-info">
+        <p>歡迎，{{ user.username }}｜</p>
+
+        <form method="post" action="{% url 'admin:logout' %}">
+            {% csrf_token %}
+            <button type="submit">登出</button>
+        </form>
+    </div>
 </div>
 
 <div class="layout">
@@ -123,10 +161,11 @@
         <input type="text" id="merchant_trade_no_input" placeholder="請輸入交易編號">
 
         <div class="btn-group">
+            <!-- 【刪除】原本用兩個 <form> + form.submit() 整頁送出,會跳到純 JSON 頁面
             <!--
                 action 先留空,實際網址由 JavaScript 在送出當下動態組成,
                 因為交易編號是使用者輸入的,渲染模板時還不知道值。
-            -->
+            -- >
             <form id="form-paid" method="post" action="">
                 {% csrf_token %}
                 <button type="button" onclick="submitForm('paid')">模擬收到款項</button>
@@ -136,12 +175,20 @@
                 {% csrf_token %}
                 <button type="button" onclick="submitForm('failed')">模擬未收到款項</button>
             </form>
+            -->
+
+            <!-- 【新增】改成普通按鈕,由 JavaScript 用 fetch 呼叫,頁面不會跳走 -->
+            <button type="button" onclick="submitForm('paid')">模擬收到款項</button>
+            <button type="button" onclick="submitForm('failed')">模擬未收到款項</button>
+            <!-- 【新增】模擬逾期未付款：Bank=expired → ECPay Mock=atm_expired → 商城 Order/Payment=expired -->
+            <button type="button" onclick="submitForm('expired')">模擬逾期未付款</button>
         </div>
     </div>
 
 </div>
 
 <script>
+/* 【刪除】原本的 submitForm:動態組網址後 form.submit() 整頁送出
 // 讀取輸入框的交易編號,動態組出網址後手動送出對應的表單
 function submitForm(type) {
     const input = document.getElementById('merchant_trade_no_input');
@@ -163,6 +210,54 @@ function submitForm(type) {
         const form = document.getElementById('form-failed');
         form.action = `/notify/simulate_failed/${encodedNo}/`;
         form.submit();
+    }
+}
+*/
+
+// 【新增】把結果顯示在頁面最上方(成功=綠底,失敗=紅底)
+function showResult(ok, text) {
+    const box = document.getElementById('result-message');
+    box.style.display = 'block';
+    box.style.background = ok ? '#e6f4ea' : '#fdecea';
+    box.style.color = ok ? '#1e6b34' : '#b3261e';
+    box.textContent = text;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// 【修改】改用 fetch 呼叫 simulate_paid / simulate_failed,不重新載入頁面
+async function submitForm(type) {
+    // 【保留】讀取輸入框的交易編號
+    const merchantTradeNo = document.getElementById('merchant_trade_no_input').value.trim();
+
+    if (!merchantTradeNo) {
+        alert('請先輸入交易編號');
+        return;
+    }
+
+    // 【新增】按鈕名稱 + 動態組出網址(encodeURIComponent 避免特殊字元破壞網址)
+    // 【修改】新增 expired 的按鈕名稱（網址 /notify/simulate_expired/ 由 type 動態組出，不用另外改）
+    const labels = { paid: '模擬收到款項', failed: '模擬未收到款項', expired: '模擬逾期未付款' };
+    const label = labels[type] || type;
+    const url = `/notify/simulate_${type}/${encodeURIComponent(merchantTradeNo)}/`;
+
+    showResult(true, `${label}：處理中…`);
+    try {
+        const resp = await fetch(url, { method: 'POST' });
+        const data = await resp.json();
+
+        if (data.status) {
+            const gw = data.gateway_response || {};
+            const pay = gw.payment || {};
+            let text = `${label}成功（${merchantTradeNo}）`;
+            if (gw.message) text += `：${gw.message}`;
+            if (pay.payment_status) text += `｜狀態：${pay.payment_status}`;
+            showResult(true, text);
+        } else {
+            // 500 時 data.error 會有真正原因,一併顯示
+            showResult(false, `${label}失敗（${merchantTradeNo}）：${data.message || '未知錯誤'}${data.error ? '｜' + data.error : ''}`);
+        }
+    } catch (e) {
+        showResult(false, `${label}失敗：無法取得伺服器回應（${e}）`);
     }
 }
 </script>

@@ -1,0 +1,50 @@
+import ast
+import os
+
+
+def format_one_line_py_file(input_file_path, output_file_path):
+    """多行註解：
+
+    此函式讀取一個排版錯亂、擠在同一行的 .py 檔案，
+    透過 Python 內建的 ast (抽象語法樹) 解析並重新標準化輸出，
+    自動補回正確的換行與縮進。
+    """
+    # 檢查來源檔案是否存在
+    if not os.path.exists(input_file_path):
+        print(f"錯誤：找不到來源檔案 {input_file_path}")
+        return
+
+    try:
+        # 1. 讀取那行擠在一起的程式碼
+        with open(input_file_path, "r", encoding="utf-8") as f:
+            raw_code = f.read()
+
+        # 2. 使用 ast 解析程式碼（這能理解程式的結構，不受單行影響）
+        parsed_ast = ast.parse(raw_code)
+
+        # 3. 使用 ast.unparse 將語法樹還原成標準格式化的 Python 程式碼
+        # 備註：ast.unparse 在 Python 3.9+ 為內建標準功能
+        formatted_code = ast.unparse(parsed_ast)
+
+        # 4. 將格式化後的漂亮程式碼寫入新檔案
+        with open(output_file_path, "w", encoding="utf-8") as f:
+            f.write(formatted_code)
+
+        print(f"成功！漂亮的程式碼已儲存至：{output_file_path}")
+
+    except SyntaxError as se:
+        print(f"語法錯誤：程式碼可能在複製時毀損或不完整。詳細資訊：{se}")
+    except Exception as e:
+        print(f"執行時發生未知錯誤：{e}")
+
+
+# ==========================================
+# 執行設定
+# ==========================================
+if __name__ == "__main__":
+    # 請將您的單行 views.py 放在跟這個腳本同一個資料夾，或填寫絕對路徑
+    input_filename = "views.py"  # 您的那一張亂掉的單行檔
+    output_filename = "views_formatted.py"  # 格式化後的成品檔
+
+    print("開始進行 Python 程式碼重組與格式化...")
+    format_one_line_py_file(input_filename, output_filename)

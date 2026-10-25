@@ -14,9 +14,14 @@ import os
 from pathlib import Path
 from django.utils.csp import CSP
 
+from dotenv import load_dotenv
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+ENV_FILE = BASE_DIR / ".env"
+
+load_dotenv(ENV_FILE)
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
@@ -48,7 +53,8 @@ HF_SPACE_BANK_SITE_URL = os.environ.get('HF_SPACE_BANK_SITE_URL', 'http://127.0.
 
 ALLOWED_HOSTS = [
 	'monzid1-bank-site.hf.space',
-	'proxy.spaces.internal.huggingface.tech'
+	'proxy.spaces.internal.huggingface.tech',
+	'127.0.0.1','localhost',
 ]
 
 # 關鍵: 允許Hugging Face 的Iframe 嵌入你的網站,否則畫面會空白
@@ -56,6 +62,21 @@ ALLOWED_HOSTS = [
 
 # 加上這行：允許 Django 讀取 X-Forwarded-Host 標頭
 USE_X_FORWARDED_HOST = True
+
+# 【新增】
+# Bank Mock 銀行代碼
+#
+# 013 = 國泰世華
+#
+BANK_MOCK_BANK_CODE = "013"
+
+
+# 【新增】
+# ATM 虛擬帳號有效期限
+#
+# 原本程式為 3 天，因此保留。
+#
+BANK_MOCK_EXPIRE_DAYS = 3
 
 # Application definition
 
@@ -70,8 +91,8 @@ INSTALLED_APPS = [
     'corsheaders',      # 新增 CORS 支援
 ]
 
-LOGIN_REDIRECT_URL = '/'
-LOGOUT_REDIRECT_URL = '/'
+LOGIN_REDIRECT_URL = '/notify/'
+LOGOUT_REDIRECT_URL = '/notify/'
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',  # 放在最前面
@@ -218,8 +239,10 @@ SITE_ID = 3
 
 # 綠界測試環境
 ECPAY_MERCHANT_ID = "3002607"
-ECPAY_HASH_KEY = os.environ.get('ECPAY_HASH_KEY', '')
-ECPAY_HASH_IV = os.environ.get('ECPAY_HASH_IV', '')
+ECPAY_HASH_KEY = os.getenv('ECPAY_HASH_KEY', '')
+ECPAY_HASH_IV = os.getenv('ECPAY_HASH_IV', '')
+#ECPAY_HASH_KEY = os.environ.get('ECPAY_HASH_KEY', '')
+#ECPAY_HASH_IV = os.environ.get('ECPAY_HASH_IV', '')
 
 # -------------------------------
 # 🔑 CORS & CSRF 設定
